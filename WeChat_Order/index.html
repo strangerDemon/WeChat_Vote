@@ -1,0 +1,222 @@
+﻿<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>微信点餐</title>
+    <meta name="description" content="Animated Checkboxes and Radio Buttons with SVG: Using SVG for adding some fancy 'check' animations to form inputs" />
+    <meta name="keywords" content="animated checkbox, svg, radio button, styled checkbox, css, pseudo element, form, animated svg" />
+   
+    <script src="../../Content/scripts/jquery/jquery-2.0.3.min.js"></script>
+    <script src="../../Content/scripts/plugins/WeChat/layer/layer.js"></script>
+    <!-- 列表 -->
+    <link rel="stylesheet" type="text/css" href="../../Content/scripts/plugins/WeChat/list_style1/css/reset.css" />
+    <link rel="stylesheet" type="text/css" href="../../Content/scripts/plugins/WeChat/list_style1/css/htmleaf-demo.css">
+    <link rel="stylesheet" href="../../Content/scripts/plugins/WeChat/list_style1/css/style.css">
+    <!--bootstrap组件start-->
+    <link href="../../Content/scripts/bootstrap/bootstrap.min.css" rel="stylesheet" />
+    <script src="../../Content/scripts/bootstrap/bootstrap.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <!--<h1 id="title">点餐</h1>-->
+            <div class="description">
+                <p>就餐时间：下一个工作日中午</p>
+                <p>点餐时间：上午8点至下午6点</p>
+            </div>
+        </header>
+        <!--<span>暂时空置
+            明日菜单：
+                1、xxxxxx
+                2、xxxxxx
+                3、xxxxxx
+                4、xxxxxx
+                5、xxxxxx
+        </span>-->   
+        <br/><br/>
+        <div class="leaderboard">
+            <ol></ol>
+        </div> 
+        <br /><br /><br /><br />
+        
+    </div><!-- /container -->
+    <button id='commit' type='button' class='pn' onclick='commit()'><span>确定点餐</span></button>  
+    
+    <script>
+        var code = "";//用户code
+        var userId = "";//用户id
+        var isOrder = 0;//是否继续点餐
+        $(function () {
+            code = request("code");
+            $.ajax({
+                url: "../../WeChatManage/Account/GetTodayOrderNum",
+                type: "POST",
+                data: { code: code,type:1 },
+                success: function (data) {
+                    var d = JSON.parse(data);
+                    //账户信息
+                    $("header").append("<p id='entity'>账户信息：<span>" + d.entity.UserName + "</span><br/><br />账户余额：<span>" + d.entity.Money + "元</span></p>");
+                    loadLogList(d.logList);
+                }
+            })
+        });
+        //null 显示的修改
+        function nullOrEmpty(str) {
+            if (str == null || str == undefined) {
+                return "";
+            }
+            return str;
+        }
+        function commit() {
+            if (!checkDate()) {
+                layer.alert("点餐只能在8点至18点之间");
+                return;
+            }
+            if (isOrder > 0) {
+                top.layer.confirm("今日已点餐"+isOrder+"次,是否继续点餐?", {
+                    icon: 7,
+                    title: "微信订餐",
+                    btn: ['确认', '取消'],
+                }, function () {
+                    commitAction();
+                })
+            } else {
+                commitAction();
+            }
+        }
+        function commitAction() {
+            $.ajax({
+                url: "../../WeChatManage/Account/WeChatOrder",
+                type: "POST",
+                data: { code: code },
+                success: function (data) {
+                    var d = JSON.parse(data); //layer.alert(d.Money+"--"+data.Money);
+                    //清理页面
+                    if (d.entity!= undefined && d.entity!= null) {
+                        //$("#commit").remove();
+                        $("ol").html("");
+                        layer.alert("点餐成功！");
+                        $("#entity").html("账户信息：<span>" + d.entity.UserName + "</span><br/><br />账户余额：<span>" + d.entity.Money + "元</span>");
+                        loadLogList(d.logList);
+                    } else {
+                        layer.alert(d);
+                    }
+                }
+            })
+        }
+        //加载列表
+        function loadLogList(logList) {
+            isOrder = logList.length;
+            for (var i = 0; i < logList.length; i++) {
+                loadLog(logList[i]);
+            }
+        }
+        function loadLog(log) {
+            var cancel = log.ChangeType != "2" ? false : checkDate();
+            var cancelStr = "";
+            if (cancel) {
+                cancelStr = "<small class='label label-success' style='float: right;cursor: pointer;' onclick='cancel(\"" + log.ID + "\")'>退订</small>";
+                if (log.IsUnsubscribe == 1) {
+                    cancelStr = "<small class='label label-warning' style='float: right;cursor: pointer;'>已退订</small>";
+                    isOrder--;
+                }
+            }
+            var date = log.CreateDate.split(' ');
+            date[0] = date[0].substring(5);
+            $("ol").append("<li><mark>" + date[0] + "<smallDate style='font-size: 0.6em;'>" + date[1] + "</smallDate><small style='float:right'>" + log.MoneyChange + "元  " + cancelStr + "</small></mark></li>");
+        }
+        //退餐
+        function cancel(logId) {
+            top.layer.confirm("确定取消订餐?", {
+                icon: 7,
+                title: "微信订餐",
+                btn: ['确认', '取消'],
+            }, function () {
+                $.ajax({
+                    url: "../../WeChatManage/Account/WeChatUnsubscribe",
+                    type: "GET",
+                    data: { code: code, accountLogId: logId,type:1 },
+                    success: function (data) {
+                        var d = JSON.parse(data);
+                        $("ol").html("");
+                        $("#entity").html("账户信息：<span>" + d.entity.UserName + "</span><br/><br />账户余额：<span>" + d.entity.Money + "元</span>");
+                        if (d.logList != null && d.logList != "") {
+                            loadLogList(d.logList);
+                        } else {
+                            $("h1").append("您暂时还没有" + typeName + "记录");
+                        }
+                    }
+                });
+                layer.closeAll('dialog');
+            });
+        }
+        //校验时间在8-18点之间
+        function checkDate() {
+            var current = new Date();//当前时间
+            var hour = current.getHours();
+            if (hour >= 18||hour<8) {
+                return false;
+            }
+            return true;
+        }
+        //解析参数
+        request = function (keyValue) {
+            var search = location.search.slice(1);
+            var arr = search.split("&");
+            for (var i = 0; i < arr.length; i++) {
+                var ar = arr[i].split("=");
+                if (ar[0] == keyValue) {
+                    if (unescape(ar[1]) == 'undefined') {
+                        return "";
+                    } else {
+                        return unescape(ar[1]);
+                    }
+                }
+            }
+            return "";
+        }
+    </script>   
+    <style>
+        header {
+            text-align: center;
+        }
+        .description {
+            font-size: 1em;
+            margin:1em;
+        }
+        .pn {
+            line-height: 50px;
+            width: 100%;
+            display: inline-block;
+            /*padding: 0 40px;*/
+            border: 1px solid #008ed2;
+            background: #008ed2;
+            color: #fff;
+            border-radius: 3px;
+            text-align: center;
+            font-size: 18px;
+            cursor: pointer;
+            box-sizing: border-box;
+            -webkit-box-sizing: border-box;
+            margin-top: 20%;
+            position: fixed;
+            bottom: 0px;
+            z-index:2;
+        }
+        p {
+            text-align: center;
+            font-size: 1em;
+            padding: 0.3em;
+        }
+            p span {
+                color: #000;
+            }
+        button {
+            outline: none;
+        }
+    </style> 
+</body>
+
+</html>

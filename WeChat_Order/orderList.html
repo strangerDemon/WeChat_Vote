@@ -1,0 +1,174 @@
+﻿<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title></title>
+    <meta name="description" content="Animated Checkboxes and Radio Buttons with SVG: Using SVG for adding some fancy 'check' animations to form inputs" />
+    <meta name="keywords" content="animated checkbox, svg, radio button, styled checkbox, css, pseudo element, form, animated svg" />
+
+    <script src="../../Content/scripts/jquery/jquery-2.0.3.min.js"></script>
+    <!-- 弹窗 -->
+    <script src="../../Content/scripts/plugins/WeChat/layer/layer.js"></script>
+    <!-- 列表 -->
+    <link rel="stylesheet" type="text/css" href="../../Content/scripts/plugins/WeChat/list_style1/css/reset.css" />
+    <link rel="stylesheet" type="text/css" href="../../Content/scripts/plugins/WeChat/list_style1/css/htmleaf-demo.css">
+    <link rel="stylesheet" href="../../Content/scripts/plugins/WeChat/list_style1/css/style.css">
+    <!--bootstrap组件start-->
+    <link href="../../Content/scripts/bootstrap/bootstrap.min.css" rel="stylesheet" />
+    <script src="../../Content/scripts/bootstrap/bootstrap.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header></header>
+        <div class="leaderboard">
+            <h1></h1>
+            <ol></ol>
+        </div>
+    </div><!-- /container -->
+
+    <script>
+        var num = 1;
+        var code = "";
+        var type = "";
+        var typeName = "";
+        $(function () {
+            code = request("code");
+            type = request("type");
+            typeName = type == "1" ? "充值" : "消费";
+            document.title = typeName+"记录";
+            loadData();
+        });
+        function loadData() {
+            var index = layer.load(10 * 1000); //loading，并且设定最长等待10秒
+            $.ajax({
+                url: "../../WeChatManage/Account/WeChatOrderLog",
+                type: "GET",
+                data: { code: code, type: type, num: num },
+                success: function (data) {
+                    var d = JSON.parse(data);
+                    if (d.logList != null && d.logList != "") {
+                        $("h1").html(d.entity.UserName +typeName+ "记录");
+                        loadLogList(d.logList);
+                    } else {
+                        if (num == 1) {
+                            $("h1").html("未找到" + typeName + "记录");
+                        }
+                        num--;
+                    }
+                }
+            })
+            layer.close(index);
+        }
+        //加载日志
+        function loadLogList(logList) {
+            for (var i = 0; i < logList.length; i++) {
+                loadLog(logList[i]);
+            }
+        }
+        function loadLog(log) {
+            //IsUnsubscribe
+            var cancelStr = "";
+            if (log.ChangeType == "2") {//消费类型
+                if (log.IsUnsubscribe == 1) {//是否已经退订
+                    cancelStr = "<small class='label label-warning' style='float: right;cursor: pointer;'>已退订</small>";
+                }else if (checkDate(log.CreateDate)) {//是否是今天
+                    cancelStr = "<small class='label label-success' style='float: right;cursor: pointer;' onclick='cancel(\"" + log.ID + "\")'>退订</small>";
+                }
+            }
+            var date = log.CreateDate.split(' ');
+            date[0] = date[0].substring(5);
+            $("ol").append("<li><mark>" + date[0] + "<smallDate style='font-size: 0.6em;'>" + date[1] + "</smallDate><small style='float:right'>" + log.MoneyChange + "元  " + cancelStr + "</small></mark></li>");
+        }
+        //退餐
+        function cancel(logId) {
+            top.layer.confirm("确定取消订餐?", {
+                icon: 7,
+                title: "微信订餐",
+                btn: ['确认', '取消'],
+            }, function () {
+                $.ajax({
+                    url: "../../WeChatManage/Account/WeChatUnsubscribe",
+                    type: "GET",
+                    data: { code: code, accountLogId: logId, type: 2 },
+                    success: function (data) {
+                        var d = JSON.parse(data);
+                        $("ol").html("");
+                        if (d.logList != null && d.logList != "") {
+                            loadLogList(d.logList);
+                        } else {
+                            $("h1").html("您暂时还没有" + typeName + "记录");
+                        }
+                    }
+                });
+                layer.closeAll('dialog');
+            });
+        }
+        //判断是否可以取消
+        //只有当天的18点前可以取消
+        function checkDate(d) {
+            var current = new Date();//当前时间
+            date = new Date(d.replace(/-/g, "/"));//ios 中不支持2017-3-31 =>2017/3/31
+            var v1 = date.getFullYear();//yyyy
+            var v2 = date.getMonth() + 1;//MM
+            var v3 = date.getDate();//dd
+            var year = current.getFullYear();
+            var month = current.getMonth() + 1;
+            var day = current.getDate();
+            var hour = current.getHours();
+            if (year > v1) {//年份小于当前年
+                return false;
+            } else if (year == v1 && month > v2) {//当前年，月份小于当前月
+                return false;
+            } else if (year == v1 && month == v2 && day > v3) {//当前年月，天小于当前天
+                return false;
+            } else if (year == v1 && month == v2 && day == v3 && (hour >= 18 || hour <= 8)) {//当前年月日，18点后不能
+                return false;
+            }
+            return true;
+        }
+        //null 显示的修改
+        function nullOrEmpty(str) {
+            if (str == null || str == undefined) {
+                return "";
+            }
+            return str;
+        }
+        //解析参数
+        request = function (keyValue) {
+            var search = location.search.slice(1);
+            var arr = search.split("&");
+            for (var i = 0; i < arr.length; i++) {
+                var ar = arr[i].split("=");
+                if (ar[0] == keyValue) {
+                    if (unescape(ar[1]) == 'undefined') {
+                        return "";
+                    } else {
+                        return unescape(ar[1]);
+                    }
+                }
+            }
+            return "";
+        }
+        //滚轮滚动到最底部的事件
+        window.onscroll = function () {
+            //总的高度
+            var sh = document.body.scrollHeight;
+            //窗口高度
+            var ch = $(window).height();
+            //相对顶部的高度
+            var h = $(this).scrollTop();
+            if (h >= sh - ch) {
+                num++;
+                loadData();
+            }
+        }
+    </script>
+    <style>
+        header {
+            text-align: center;
+        }
+    </style>
+</body>
+</html>
