@@ -35,7 +35,6 @@
         var secIdentify = "";//section标识
         var voteId = "";//投票id
         var code = "";//用户code
-        var userId = "";//用户id
         var situationName = "";//投票人微信号
         var svg;//画布
         $(function () {
@@ -49,18 +48,19 @@
                 data: { VoteId: voteId, Code: code },
                 success: function (data) {
                     var d = JSON.parse(data);
-                    loadVote(d.entity);
+                    
                     if (d.isCheck == "true" || d.isCheck == "True" || d.isCheck == "timeEnd" || d.isCheck == "end") {
-                        if (d.isCheck == "timeEnd") { layer.alert("投票时间已经结束"); }
-                        if (d.isCheck == "end") { layer.alert("投票已经收集结束"); }
-                        //if (d.isCheck == "True") { layer.alert("您已经投票"); }
-                        loadChartPieList(d.subject,d.entity.VoteType);
-                        loadTotal(d.entity);
-                        loadSituation(d.situation);
+                        if (d.isCheck == "true" || d.isCheck == "True") { layer.alert("您已经投票"); }
+                        else if (d.isCheck == "notFound") { layer.alert("未找到投票"); }
+                        else if (d.isCheck == "timeEnd") { layer.alert("投票时间已经结束"); }
+                        else if (d.isCheck == "end") { layer.alert("投票已经收集结束"); }
+                        //loadChartPieList(d.subject,d.entity.VoteType);
+                        //loadTotal(d.entity);
+                        //loadSituation(d.situation);
                     } else if (d.isCheck == "codeError" || d.isCheck == "CodeError") {//code 信息错误 未能匹配用户信息
                         layer.alert("页面失效，请重新打开页面！", { icon: 0 });
                     } else {
-                        userId = d.isCheck;
+                        loadVote(d.entity);
                         loadSubjectList(d.subject);
                     }
                     //关闭
@@ -95,7 +95,7 @@
             var readonly = subject.SubjectType == 3 ? " readonly=true " : "";
             var subjectStr = '<section ' + secIdentify +readonly+ '>' +
                                 '<form class="ac-custom ac-' + type + ' ac-' + style + '" autocomplete="off">' +
-                                '<h2>' +subjectCount+"、"+ subject.Title + mime + '<span>' + subject.Description + '</span></h2>' +//加一个最多最少提醒
+                                '<h2>' + subjectCount + "、" + subject.Title + mime + '<span>' + nullOrEmpty(subject.Description) + '</span></h2>' +//加一个最多最少提醒
                                 '<ul>';
             for (var i = 0; i < subject.optionList.length; i++) {
                 //name = subject.SubjectType == 1 ? subject.ID : subject.ID;// subject.optionList[i].ID;
@@ -216,17 +216,18 @@
             $.ajax({
                 url: "../../WeChatManage/Vote/SaveVoteSituation",
                 type: "POST",
-                data: { VoteId: voteId, UserId: userId, situationStr: JSON.stringify(situation) },
+                data: { VoteId: voteId, Code: code, situationStr: JSON.stringify(situation) },
                 success: function (data) {
                     var d = JSON.parse(data);
                     //清理页面
                     $("section").remove();
                     $("#commit").remove();
-                    if (d.commitCode == "success" || d.commitCode == "Success" || d.commitCode == "已经投票" || d.commitCode == "投票已结束") {
-                        loadChartPieList(d.subject,d.entity.VoteType);
-                        loadTotal(d.entity);
-                        loadSituation(d.situation);
-                    }
+                    if (d.commitCode == "投票成功" || d.commitCode == "已经投票" || d.commitCode == "投票已结束") {
+                        $(".container").html();
+                        //loadChartPieList(d.subject,d.entity.VoteType);
+                        //loadTotal(d.entity);
+                        //loadSituation(d.situation);
+                    } 
                     layer.alert(d.commitCode);
                 }
             })
@@ -244,7 +245,7 @@
         function loadChartPie(subjectCount,subject) {
             var pie='<div style="width: 100%;">'+
                           '<div style="padding-left: 10px;">' +
-                               '&nbsp;&nbsp;&nbsp;&nbsp;<h2 style="margin: -4px 0;">' +subjectCount+"、"+ subject.Title + '</h2><span style="color: rgba(0,0,0,.5);">' + subject.Description + '</span>' +
+                               '&nbsp;&nbsp;&nbsp;&nbsp;<h2 style="margin: -4px 0;">' + subjectCount + "、" + subject.Title + '</h2><span style="color: rgba(0,0,0,.5);">' + nullOrEmpty(subject.Description) + '</span>' +
                                '</div>'+
                                '<div style="margin-top: 10px; overflow: hidden;">'+
                                    '<div id="'+subject.ID+'">'+
@@ -385,7 +386,7 @@
                         var subjectId = el.name;
                         max = $("#" + subjectId).attr("max");
                         min = $("#" + subjectId).attr("min");
-                        if ($("input[name='" + subjectId + "']:checked").length > max || $("input[name='" + subjectId + "']:checked").length < min || el.readonly) {
+                        if ($("input[name='" + subjectId + "']:checked").length > max || el.readonly) {
                             el.checked = false;
                             layer.alert("最多选择" + max + "项！", {icon:0});
                             checkCommit();
@@ -555,6 +556,9 @@
             cursor: pointer;
             box-sizing: border-box;
             -webkit-box-sizing: border-box;
+            position: fixed;
+            bottom: 0px;
+            z-index: 2;
         }
 
         button {
