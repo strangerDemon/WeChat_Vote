@@ -18,6 +18,8 @@ using ZoneTop.Application.Busines.WeChatManage;
 using ZoneTop.Application.Entity.WeChatManage;
 using System.Xml;
 using ZoneTop.Application.Cache;
+using ZoneTop.Application.Busines.SystemManage;
+using ZoneTop.Application.Entity.SystemManage;
 
 namespace ZoneTop.Application.Web.Areas.WeChatManage.Controllers
 {
@@ -27,11 +29,15 @@ namespace ZoneTop.Application.Web.Areas.WeChatManage.Controllers
     public class WeChatApiController : ApiControllerBase
     {
         //公众平台上开发者设置的token, corpID, EncodingAESKey
-        private string sToken = "应用的token";
-        private string sCorpID = "公司的scorpid";
-        private string sEncodingAESKey = "应用的秘钥";
+        private string sToken = "公司token";
+        private string sCorpID = "公司scorpid";
+        private string sEncodingAESKey = "应用秘钥";
         //字典
         DataItemCache dataItemCache = new DataItemCache();
+        DataItemDetailBLL dataItemDetailBLL = new DataItemDetailBLL();
+        //是否点餐 控制点餐的开关
+        Entity.SystemManage.ViewModel.DataItemModel dataItemModel;
+        DataItemDetailEntity orderItem;
         /// <summary>
         /// 点餐的action 操作 账户余额，订餐记录， 充值记录，
         /// </summary>
@@ -41,7 +47,7 @@ namespace ZoneTop.Application.Web.Areas.WeChatManage.Controllers
         public void orderAction(string wechatId, string AgentID, int type)
         {
             RecordExceptionToFile("---------------------myAtion------------------------");
-            RecordExceptionToFile("wechatId:" + wechatId + " AgentID:" + AgentID);
+            RecordExceptionToFile("wechatId:" + wechatId + " AgentID:" + AgentID+" type:"+type);
             if (wechatId != null && wechatId != "" && AgentID != null && AgentID != "")
             {
                 AccountBLL bll = new AccountBLL();//
@@ -65,11 +71,8 @@ namespace ZoneTop.Application.Web.Areas.WeChatManage.Controllers
                 }
                
                 string pageNum = "0";
-                IEnumerable<Entity.SystemManage.ViewModel.DataItemModel> dateItem = dataItemCache.GetDataItemList("OrderLog");
-                foreach (Entity.SystemManage.ViewModel.DataItemModel i in dateItem)
-                {
-                    pageNum = i.ItemValue;
-                }
+                int count = 0;
+                pageNum = GetDataItemModel("OrderLog") == null ? "0" : GetDataItemModel("OrderLog").ItemValue;
                 switch (type)
                 {
                     case 1://账户余额
@@ -94,8 +97,8 @@ namespace ZoneTop.Application.Web.Areas.WeChatManage.Controllers
                         item.title = "充值记录";
                         item.url= new Oauth2Authorize()
                                     {
-                                        appid = "公司的scorpid",
-                                        redirect_uri = "程序部署的url/WeChat/Order/orderList.html?type=1",
+                                        appid = "应用的id",
+                                        redirect_uri = "公司url/WeChat/Order/orderList.html?type=1",
                                         state = "ping"
 
                                     }.GetAuthorizeUrl();
@@ -116,8 +119,8 @@ namespace ZoneTop.Application.Web.Areas.WeChatManage.Controllers
                         item.title = "消费记录";
                         item.url=new Oauth2Authorize()
                         {
-                            appid = "公司的scorpid",
-                            redirect_uri = "程序部署的url/WeChat/Order/orderList.html?type=2",
+                            appid = "应用的id",
+                            redirect_uri = "公司url/WeChat/Order/orderList.html?type=2",
                             state = "ping"
 
                         }.GetAuthorizeUrl();
@@ -127,11 +130,9 @@ namespace ZoneTop.Application.Web.Areas.WeChatManage.Controllers
                         break;
                     case 5:
                         RecordExceptionToFile("管理员获取今日点餐情况：");
-                        string queryJson = "{\"condition\":\"Date\",\"keyword\":\"Date\",\"minDate\":\"" + System.DateTime.Today.ToString() + "\",\"maxDate\":\"" + System.DateTime.Today.AddDays(1).ToString() + "\"}";
-                        RecordExceptionToFile("queryJson：" + queryJson);
-                        logEntityList = bll.GetAccountLogList(null, "all", null, queryJson);
+                        logEntityList = bll.WeChatOrderLog("", "2", 0, 0);//bll.GetAccountLogList(null, "all", null, queryJson);这个是今天所有的，包括充钱
                         RecordExceptionToFile("总条数：" + logEntityList.Count());
-                        int count = 0;
+                        count = 0;
                         foreach (WeChatAccountLogEntity logEntity in logEntityList)
                         {
                             if (logEntity.IsUnsubscribe == 0)//今日有效的点餐记录
@@ -144,11 +145,82 @@ namespace ZoneTop.Application.Web.Areas.WeChatManage.Controllers
                         item.title = "今日点餐情况";
                         item.url= new Oauth2Authorize()
                                     {
-                                        appid = "公司的scorpid",
-                                        redirect_uri = "程序部署的url/WeChat/Order/todayOrderList.html?type=2",
+                                        appid = "应用的id",
+                                        redirect_uri = "公司url/WeChat/Order/todayOrderList.html?type=2",
                                         state = "ping"
 
                                     }.GetAuthorizeUrl();
+                        itemList.articles.Add(item);
+                        break;
+                    case 6:
+                        RecordExceptionToFile("管理员获取今日账户变动情况：");
+                        string queryJson = "{\"condition\":\"Date\",\"keyword\":\"Date\",\"minDate\":\"" + System.DateTime.Today.ToString() + "\",\"maxDate\":\"" + System.DateTime.Today.AddDays(1).ToString() + "\"}";
+                        RecordExceptionToFile("queryJson：" + queryJson);
+                        logEntityList = bll.GetAccountLogList(null, "all", null, queryJson,"alltoday");//这个是今天所有的，包括充钱
+                        RecordExceptionToFile("总条数：" + logEntityList.Count());
+                        count = 0;
+                        foreach (WeChatAccountLogEntity logEntity in logEntityList)
+                        {
+                            if (logEntity.IsUnsubscribe == 0)//今日有效的点餐记录
+                            {
+                                count++;
+                            }
+                        }
+                        item.description = "今日账户变动情况：" + count + " 人次";
+                        RecordExceptionToFile("今日账户变动情况：" + count + " 人次");
+                        item.title = "今日账户变动情况";
+                        item.url = new Oauth2Authorize()
+                        {
+                            appid = "应用的id",
+                            redirect_uri = "公司url/WeChat/Order/todayOrderList.html?type=alltoday",
+                            state = "ping"
+
+                        }.GetAuthorizeUrl();
+                        itemList.articles.Add(item);
+                        break;
+                    case 7://关闭点餐
+                        //IsWeChatOrderList=dataItemCache.GetDataItemList("IsWeChatOrder");//是否可以点餐
+                        //orderItem =new DataItemDetailEntity();
+                        //foreach (Entity.SystemManage.ViewModel.DataItemModel i in IsWeChatOrderList)
+                        //{
+                        //    orderItem=dataItemDetailBLL.GetEntity(i.ItemDetailId);
+                        //    orderItem.ItemValue = "false";
+                        //}
+                        RecordExceptionToFile("关闭点餐功能");
+                        try
+                        {
+                            dataItemModel = GetDataItemModel("IsWeChatOrder");
+                            orderItem = new DataItemDetailEntity();
+                            orderItem = dataItemDetailBLL.GetEntity(dataItemModel.ItemDetailId);
+                            orderItem.ItemValue = "false";
+                            dataItemDetailBLL.WeChatUpdateItemDetail(orderItem.ItemDetailId, wechatId,orderItem);
+                            item.description = "关闭点餐功能";
+                            item.title = "关闭点餐功能：成功";
+                        }
+                        catch (Exception ex)
+                        {
+                            RecordExceptionToFile("关闭点餐功能：失败 " + ex.ToString());
+                            item.description = "失败：" + ex.ToString();
+                            item.title = "关闭点餐功能：失败";
+                        }
+                        itemList.articles.Add(item);
+                        break;
+                    case 8://开启点餐
+                        RecordExceptionToFile("打开点餐功能");
+                        try
+                        {
+                            dataItemModel = GetDataItemModel("IsWeChatOrder");
+                            orderItem = new DataItemDetailEntity();
+                            orderItem = dataItemDetailBLL.GetEntity(dataItemModel.ItemDetailId);
+                            orderItem.ItemValue = "true";
+                            dataItemDetailBLL.WeChatUpdateItemDetail(orderItem.ItemDetailId,wechatId, orderItem);
+                            item.description = "打开点餐功能";
+                            item.title = "打开点餐功能:成功";
+                        }catch(Exception ex){
+                            RecordExceptionToFile("打开点餐功能：失败 " + ex.ToString());
+                            item.description = "失败："+ex.ToString();
+                            item.title = "打开点餐功能：失败";
+                        }
                         itemList.articles.Add(item);
                         break;
                     default:
@@ -266,18 +338,18 @@ namespace ZoneTop.Application.Web.Areas.WeChatManage.Controllers
             }
             RecordExceptionToFile("sMsg:" + sMsg);
             //click demo
-            //<xml><ToUserName><![CDATA[公司的scorpid]]></ToUserName>
-            //<FromUserName><![CDATA[xxxx]]></FromUserName>
+            //<xml><ToUserName><![CDATA[应用的id]]></ToUserName>
+            //<FromUserName><![CDATA[用户账号]]></FromUserName>
             //<CreateTime>1490597539</CreateTime>
             //<MsgType><![CDATA[event]]></MsgType>
             //<AgentID>8</AgentID>
             //<Event><![CDATA[click]]></Event>
-            //<EventKey><![CDATA[914bff0d-0edf-410e-9fcf-49c689964e12]]></EventKey>
+            //<EventKey><![CDATA[按钮key]]></EventKey>
             //</xml>
 
             //content demo
-            //<xml><ToUserName><![CDATA[公司的scorpid]]></ToUserName>
-            //<FromUserName><![CDATA[xxx]]></FromUserName>
+            //<xml><ToUserName><![CDATA[应用的id]]></ToUserName>
+            //<FromUserName><![CDATA[用户账号]]></FromUserName>
             //<CreateTime>1490661824</CreateTime>
             //<MsgType><![CDATA[text]]></MsgType>
             //<Content><![CDATA[1]]></Content>
@@ -294,7 +366,7 @@ namespace ZoneTop.Application.Web.Areas.WeChatManage.Controllers
             XmlNode AgentID = xdoc.SelectSingleNode("/xml/AgentID");//应用号id
             XmlNode Content = xdoc.SelectSingleNode("/xml/Content");//文本
             #endregion
-            //Event=click;EventKey=914bff0d-0edf-410e-9fcf-49c689964e12;ToUserName=公司的scorpid;FromUserName=xxx
+            //Event=click;EventKey=按钮key;ToUserName=应用的id;FromUserName=用户账号。
             //点击事件
             if (Event != null)
             {
@@ -303,19 +375,19 @@ namespace ZoneTop.Application.Web.Areas.WeChatManage.Controllers
                 {
                     if (AgentID.InnerText == "8")//报餐应用
                     {
-                        if (EventKey.InnerText.Equals("914bff0d-0edf-410e-9fcf-49c689964e12"))//账户余额
+                        if (EventKey.InnerText.Equals("按钮key"))//账户余额
                         {
                             orderAction(FromUserName.InnerText, AgentID.InnerText, 1);
                         }
-                        else if (EventKey.InnerText.Equals("86873bb8-b65f-4960-be30-77c63c61c8dc"))//充值记录
+                        else if (EventKey.InnerText.Equals("按钮key"))//充值记录
                         {
                             orderAction(FromUserName.InnerText, AgentID.InnerText, 2);
                         }
-                        else if (EventKey.InnerText.Equals("7c00f7c9-9671-42fd-b74c-12705ed0a1bc"))//点餐记录
+                        else if (EventKey.InnerText.Equals("按钮key"))//点餐记录
                         {
                             orderAction(FromUserName.InnerText, AgentID.InnerText, 3);
                         }
-                        else if (EventKey.InnerText.Equals("216f61d1-d55c-4a50-bd9a-15f2280c5d8e"))//我要点餐
+                        else if (EventKey.InnerText.Equals("按钮key"))//我要点餐
                         {
 
                         }
@@ -346,15 +418,59 @@ namespace ZoneTop.Application.Web.Areas.WeChatManage.Controllers
                     {
                         orderAction(FromUserName.InnerText, AgentID.InnerText, 3);
                     }
-                    else if (cont.Contains("今日点餐情况") || cont.ToLower().Contains("system") || cont.Contains("都有谁点餐"))//管理员查看 预留接口
+                    else if ((cont.Contains("今日点餐情况") || cont.ToLower().Contains("today") || cont.ToLower().Contains("system") || cont.Contains("都有谁点餐")) && IsContains("字典key", FromUserName.InnerText))//管理员查看 预留接口
                     {
                         orderAction(FromUserName.InnerText, AgentID.InnerText, 5);
+                    }
+                    else if ((cont.Contains("今日账户变动情况") || cont.ToLower().Contains("all")) && IsContains("字典key", FromUserName.InnerText))//管理员查看 预留接口
+                    {
+                        orderAction(FromUserName.InnerText, AgentID.InnerText, 6);
+                    }
+                    else if ((cont.ToLower().Contains("gbdc") || cont.ToLower().Contains("关闭点餐")) && IsContains("字典key", FromUserName.InnerText))//现在开始不能点餐
+                    {
+                        orderAction(FromUserName.InnerText, AgentID.InnerText, 7);
+                    }
+                    else if ((cont.ToLower().Contains("dkdc") || cont.ToLower().Contains("打开点餐")) && IsContains("字典key", FromUserName.InnerText))//现在开始可以点餐
+                    {
+                        orderAction(FromUserName.InnerText, AgentID.InnerText, 8);
                     }
                 }
             }
             return "";
         }
+        /// <summary>
+        /// 字典中是否包含 ，当前值
+        /// </summary>
+        /// <param name="enCode"></param>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        private bool IsContains(string enCode,string value)
+        {
+            IEnumerable<Entity.SystemManage.ViewModel.DataItemModel> ItemList = dataItemCache.GetDataItemList(enCode);//点餐的管理人员
+            foreach (Entity.SystemManage.ViewModel.DataItemModel Item in ItemList)
+            {
+                if (Item.ItemValue.Equals(value))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        /// <summary>
+        /// 返回第一个匹配的item
+        /// </summary>
+        /// <param name="enCode"></param>
+        /// <returns></returns>
+        private Entity.SystemManage.ViewModel.DataItemModel GetDataItemModel(string enCode)
+        {
+            IEnumerable<Entity.SystemManage.ViewModel.DataItemModel> dateItem = dataItemCache.GetDataItemList(enCode);
 
+            foreach (Entity.SystemManage.ViewModel.DataItemModel i in dateItem)
+            {
+                return i;
+            }
+            return null;
+        }
         #region 异常信息写入日志文件
         /// <summary>
         ///  异常信息写入日志文件
